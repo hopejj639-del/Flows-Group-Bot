@@ -28,7 +28,7 @@ async def lifespan(app: FastAPI):
     await init_db()
     
     # 2. Set Telegram Webhook
-    webhook_endpoint = f"{settings.webhook_url.rstrip('/')}/webhook"
+    webhook_endpoint = f"{str(settings.webhook_url).rstrip('/')}/webhook"
     webhook_info = await bot.get_webhook_info()
     
     if webhook_info.url != webhook_endpoint:
