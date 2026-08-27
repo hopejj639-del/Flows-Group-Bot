@@ -2,18 +2,27 @@
 import logging
 from sqlalchemy.ext.asyncio import create_async_engine, async_sessionmaker, AsyncSession
 from sqlalchemy.orm import declarative_base
+from sqlalchemy.pool import NullPool
 from app.config import settings
 
 logger = logging.getLogger(__name__)
 
-# Create the Async Engine using asyncpg.
-# pool_pre_ping ensures connections aren't dropped silently by Supabase.
+# System Architect Note: 
+# Using Supabase Connection Pooler (Port 6543) in Transaction Mode.
+# We MUST use NullPool to prevent SQLAlchemy from maintaining its own pool,
+# and we MUST disable prepared statements to prevent asyncpg from crashing with PgBouncer.
 engine = create_async_engine(
     settings.database_url,
     echo=False,
-    pool_pre_ping=True,
-    pool_size=10,
-    max_overflow=20
+    poolclass=NullPool,  # Delegates connection pooling entirely to Supabase
+    connect_args={
+        "ssl": "require",  # Enforce encrypted connection for cloud databases
+        "server_settings": {
+            "application_name": "flows_group_bot", # Helps in identifying connections on Supabase Dashboard
+        },
+        "prepared_statement_cache_size": 0,  # Required fix for Supabase transaction pooler
+        "statement_cache_size": 0            # Required fix for Supabase transaction pooler
+    }
 )
 
 # AsyncSession factory
@@ -36,7 +45,7 @@ async def init_db():
         async with engine.begin() as conn:
             # Create all tables if they don't exist
             await conn.run_sync(Base.metadata.create_all)
-            logger.info("Database tables initialized successfully.")
+            logger.info("Database tables initialized successfully via Supabase Pooler.")
     except Exception as e:
         logger.critical(f"Failed to initialize database: {e}")
         raise
