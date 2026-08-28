@@ -25,7 +25,7 @@ async def on_user_joined(message: Message):
         await message.delete()
     except TelegramBadRequest:
         logger.warning(f"Failed to delete system joined message in chat {chat_id}. Missing 'Delete Messages' admin right?")
-        pass # Admin Permission မရှိပါက Error မတက်စေရန် ကျော်သွားပါမည်
+        pass
 
     new_members = message.new_chat_members
     if not new_members:
@@ -34,19 +34,17 @@ async def on_user_joined(message: Message):
     for member in new_members:
         # ၂။ Anti-Bot Security (Bot အသစ်များ ဝင်လာပါက ချက်ချင်း Kick ထုတ်မည်)
         if member.is_bot:
-            # မိမိကိုယ်တိုင် (Flows Group Bot) Group ထဲ Add ခံရချိန်တွင် Kick မထုတ်မိစေရန် စစ်ဆေးခြင်း
             me = await message.bot.me()
             if member.id == me.id:
                 continue
                 
             try:
-                # Bot ကို Ban ပြီး ချက်ချင်းပြန် Unban လုပ်ခြင်းသည် Kick ထုတ်ခြင်း (Remove from group) နှင့် အတူတူပင်ဖြစ်သည်
                 await message.chat.ban(user_id=member.id)
                 await message.chat.unban(user_id=member.id)
                 logger.info(f"Anti-Bot Triggered: Kicked unauthorized bot {member.full_name} ({member.id}) from chat {chat_id}")
             except TelegramBadRequest as e:
-                logger.error(f"Failed to kick bot {member.id} in chat {chat_id}. Missing 'Ban Users' right? Error: {e}")
-            continue # Bot ဖြစ်နေပါက Welcome Message ပို့မည့် အဆင့်သို့ ဆက်မသွားဘဲ ကျော်မည်
+                logger.error(f"Failed to kick bot {member.id} in chat {chat_id}. Error: {e}")
+            continue
 
         # ၃။ Auto-Delete System (အရင်ကြိုဆိုထားသော စာဟောင်း ရှိပါက ဖျက်မည်)
         if chat_id in last_welcome_messages:
@@ -54,16 +52,14 @@ async def on_user_joined(message: Message):
             try:
                 await message.bot.delete_message(chat_id=chat_id, message_id=prev_msg_id)
             except TelegramBadRequest:
-                # အကယ်၍ Admin တစ်ယောက်ယောက်က Manual ဖျက်သွားပြီးဖြစ်ပါက Error ကို လျစ်လျူရှုမည်
                 pass
 
-        # ၄။ Interactive UI (Inline Keyboard Buttons တည်ဆောက်ခြင်း)
-        # မှတ်ချက်: "URL" နေရာတွင် သင်၏ အမှန်တကယ် Link များကို ပြင်ဆင်ထည့်သွင်းပါ
+        # ၄။ Interactive UI (Rules Button ဖြုတ်ထားပြီး Channel Button သာ ကျန်ရှိမည်)
+        # မှတ်ချက်: "URL" နေရာတွင် သင်၏ အမှန်တကယ် Channel Link ကို ပြင်ဆင်ထည့်သွင်းပါ
         keyboard = InlineKeyboardMarkup(
             inline_keyboard=[
                 [
-                    InlineKeyboardButton(text="📜 စည်းကမ်းချက်များ ဖတ်ရန်", url="https://t.me/your_rules_link"),
-                    InlineKeyboardButton(text="📢 Channel သို့ ဝင်ရန်", url="https://t.me/your_channel_link")
+                    InlineKeyboardButton(text="📢 Channel သို့ ဝင်ရန်", url="https://t.me/flowsgpt")
                 ]
             ]
         )
@@ -81,7 +77,6 @@ async def on_user_joined(message: Message):
         # ၅။ ကြိုဆိုစာသား အသစ်ပို့ခြင်း နှင့် In-Memory တွင် မှတ်သားခြင်း
         try:
             sent_msg = await message.answer(welcome_text, reply_markup=keyboard, parse_mode="HTML")
-            # နောက်လူဝင်လာပါက ဖျက်နိုင်ရန် ယခု Message ID ကို မှတ်သားထားမည်
             last_welcome_messages[chat_id] = sent_msg.message_id
         except Exception as e:
             logger.error(f"Failed to send welcome message in chat {chat_id}: {e}")
