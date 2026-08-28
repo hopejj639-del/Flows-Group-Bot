@@ -6,6 +6,7 @@ from app.bot.handlers.general import general_router
 from app.bot.handlers.admin import admin_router
 from app.bot.handlers.greetings import greetings_router
 from app.bot.handlers.filters import filters_router
+from app.bot.handlers.moderation import moderation_router  # အသစ်ထည့်သွင်းခြင်း
 
 def setup_dispatcher() -> Dispatcher:
     dp = Dispatcher()
@@ -13,9 +14,10 @@ def setup_dispatcher() -> Dispatcher:
     # Bind Middleware (Database injection)
     dp.update.middleware(DatabaseMiddleware(session_pool=AsyncSessionLocal))
 
-    # Bind Routers (Order matters! General commands first, then admin, then greetings, then filters)
+    # Bind Routers (Order matters!)
     dp.include_router(general_router)
     dp.include_router(admin_router)
+    dp.include_router(moderation_router)  # အသစ်ထည့်သွင်းခြင်း
     dp.include_router(greetings_router)
     dp.include_router(filters_router)
 
