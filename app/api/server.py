@@ -1,9 +1,10 @@
 # Filename: app/api/server.py
 import logging
 from contextlib import asynccontextmanager
-from fastapi import FastAPI, Request, HTTPException
+from fastapi import FastAPI, Request
 from aiogram import Bot
 from aiogram.types import Update
+from aiogram.client.default import DefaultBotProperties
 from app.config import settings
 from app.database import init_db
 from app.bot.dispatcher import setup_dispatcher
@@ -11,8 +12,6 @@ from app.bot.dispatcher import setup_dispatcher
 logger = logging.getLogger(__name__)
 
 # Initialize Bot instance with the token from .env
-# Using DefaultBotProperties for global parse_mode if needed (HTML is standard)
-from aiogram.client.default import DefaultBotProperties
 bot = Bot(token=settings.bot_token.get_secret_value(), default=DefaultBotProperties(parse_mode="HTML"))
 dp = setup_dispatcher()
 
@@ -20,18 +19,18 @@ dp = setup_dispatcher()
 async def lifespan(app: FastAPI):
     """
     FastAPI Lifespan events for startup and shutdown sequences.
-    This ensures the database connects and webhooks are set securely before accepting requests.
     """
     # --- STARTUP ---
     logger.info("Starting up application...")
     # 1. Initialize Database Tables
     await init_db()
     
-    # 2. Set Telegram Webhook
+    # 2. Set Telegram Webhook Securely
     webhook_endpoint = f"{str(settings.webhook_url).rstrip('/')}/webhook"
     webhook_info = await bot.get_webhook_info()
     
     if webhook_info.url != webhook_endpoint:
+        # drop_pending_updates=True will clear out the 'pending_update_count: 2'
         await bot.set_webhook(
             url=webhook_endpoint,
             drop_pending_updates=True,
@@ -45,13 +44,14 @@ async def lifespan(app: FastAPI):
     
     # --- SHUTDOWN ---
     logger.info("Shutting down application...")
-    # Clean up webhook and bot session securely
-    await bot.delete_webhook(drop_pending_updates=False)
+    # CRITICAL ARCHITECTURAL FIX: 
+    # Removed `await bot.delete_webhook()` to prevent Render's sleep mode from breaking the bot.
+    # The webhook MUST persist so Telegram can wake up the server when a new message arrives.
     await bot.session.close()
     logger.info("Application shutdown gracefully.")
 
 # Initialize FastAPI application
-app = FastAPI(lifespan=lifespan, title="Rose Bot Clone (Private Edition)")
+app = FastAPI(lifespan=lifespan, title="Flows Group Bot")
 
 @app.post("/webhook")
 async def telegram_webhook(request: Request):
@@ -70,13 +70,12 @@ async def telegram_webhook(request: Request):
         return {"ok": True}
     except Exception as e:
         logger.error(f"Error processing webhook update: {e}")
-        # Return 200 even on error to prevent Telegram from spamming retries for a broken update
+        # Return 200 even on error to prevent Telegram from spamming retries
         return {"ok": False, "error": str(e)}
 
 @app.get("/health")
 async def health_check():
     """
-    Endpoint for UptimeRobot to ping every 5 minutes.
-    Keeps the Render Free Web Service alive.
+    Endpoint for ping services (e.g., UptimeRobot) to keep the Web Service alive.
     """
     return {"status": "alive", "service": "telegram_bot"}
